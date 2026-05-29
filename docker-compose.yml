@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: trapoapp-postgres-1
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: trapoapp_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - trapoapp_default
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: trapoapp-cadvisor-1
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    privileged: true
+    networks:
+      - trapoapp_default
+
+  app1:
+    build: ./app
+    container_name: trapoapp-app1-1
+    restart: unless-stopped
+    volumes:
+      - ./app:/usr/src/app
+      - /usr/src/app/node_modules
+    environment:
+      - PORT=3000
+      - DATABASE_URL=postgresql://user:password@postgres:5432/trapoapp_db
+    networks:
+      - trapoapp_default
+
+  app2:
+    build: ./app
+    container_name: trapoapp-app2-1
+    restart: unless-stopped
+    volumes:
+      - ./app:/usr/src/app
+      - /usr/src/app/node_modules
+    environment:
+      - PORT=3000
+      - DATABASE_URL=postgresql://user:password@postgres:5432/trapoapp_db
+    networks:
+      - trapoapp_default
+
+  nginx:
+    image: nginx:alpine
+    container_name: trapoapp-nginx-1
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app1
+      - app2
+    networks:
+      - trapoapp_default
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: trapoapp-prometheus-1
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - trapoapp_default
+
+  grafana:
+    image: grafana/grafana:11.1.5
+    container_name: trapoapp-grafana-1
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - trapoapp_default
+
+volumes:
+  postgres_data:
+  grafana_data:
+
+networks:
+  trapoapp_default:
+    driver: bridge
